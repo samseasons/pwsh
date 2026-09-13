@@ -16,7 +16,7 @@ function resolve($f, $file) {
         }
         $f = $file.Substring(0, $file.LastIndexOf('/')) + '/' + $f
     }
-    if (!$f.EndsWith('.js')) {
+    if (-not $f.EndsWith('.js')) {
         $f += '.js'
     }
     return $f
@@ -41,9 +41,9 @@ function substitute($text, $past, $next) {
 }
 
 function parse($file, $modules, $texts) {
-    try {
+    if (Test-Path -Path $file) {
         $text = (Get-Content $file) ?? ''
-    } catch {
+    } else {
         $texts[$file] = ''
         return
     }
@@ -60,17 +60,17 @@ function parse($file, $modules, $texts) {
         if ($line.TrimStart("`t ").StartsWith('//')) {
             continue
         }
-        if (!$remove -and $line.Contains('/*') -and !$line.Contains('//*')) {
-            if ($line.Contains('*/')) {
-                $line = $line.Substring(0, $line.IndexOf('/*')) + ' ' + $line.Substring($line.IndexOf('*/') + 2)
+        if (-not $remove -and ($i = $line.IndexOf('/*')) -ne -1 -and -not $line.Contains('//*')) {
+            if (($j = $line.IndexOf('*/')) -ne -1) {
+                $line = $line.Substring(0, $i) + ' ' + $line.Substring($j + 2)
             } else {
-                $line = $line.Substring(0, $line.IndexOf('/*'))
+                $line = $line.Substring(0, $i)
                 $remove = $true
             }
         }
         if ($remove) {
-            if ($line.Contains('*/')) {
-                $line = $line.Substring($line.IndexOf('*/') + 2)
+            if (($i = $line.IndexOf('*/')) -ne -1) {
+                $line = $line.Substring($i + 2)
                 $remove = $false
             } else {
                 continue
@@ -133,9 +133,9 @@ function parse($file, $modules, $texts) {
     $mods = @()
     $modules[$file] = @()
     foreach ($f in $order) {
-        if (!$texts.ContainsKey($f)) {
+        if (-not $texts.ContainsKey($f)) {
             $mods += $f
-            if (!$modules.ContainsKey($f)) {
+            if (-not $modules.ContainsKey($f)) {
                 $modules[$file] = $mods
                 return
             }
@@ -214,7 +214,7 @@ function parse($file, $modules, $texts) {
                 continue
             }
         }
-        if ($line -and !$a.StartsWith('import ')) {
+        if ($line -and -not $a.StartsWith('import ')) {
             $text += $line + "`n"
         }
     }
