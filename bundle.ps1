@@ -28,9 +28,8 @@ function substitute($text, $past, $next) {
     $j = $next.Length
     while (($a = $text.IndexOf($past, $a)) -ne -1) {
         if ($text.Length -lt $a + $i + 1) {
-            return $text
-        }
-        if ($base64.Contains($text[$a + $i]) -or ($a -ne 0 -and ($base64 + "`"'.").Contains($text[$a - 1]))) {
+            break
+        } elseif ($base64.Contains($text[$a + $i]) -or ($a -ne 0 -and ($base64 + "`"'.").Contains($text[$a - 1]))) {
             $a += $i
             continue
         }
@@ -46,12 +45,6 @@ function parse($file, $modules, $texts) {
     } else {
         $texts[$file] = ''
         return
-    }
-    while ($text.Contains(" `n")) {
-        $text = $text.Replace(" `n", "`n")
-    }
-    while ($text.Contains("`n`n")) {
-        $text = $text.Replace("`n`n", "`n")
     }
     $lines = $text.Split("`n")
     $remove = $false
