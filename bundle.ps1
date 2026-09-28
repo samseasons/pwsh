@@ -22,14 +22,12 @@ function resolve($f, $file) {
     return $f
 }
 
-function substitute($text, $past, $next) {
+function substitute($next, $past, $text) {
     $a = 0
     $i = $past.Length
     $j = $next.Length
     while (($a = $text.IndexOf($past, $a)) -ne -1) {
-        if ($text.Length -lt $a + $i + 1) {
-            break
-        } elseif ($base64.Contains($text[$a + $i]) -or ($a -ne 0 -and ($base64 + "`"'.").Contains($text[$a - 1]))) {
+        if ($base64.Contains($text[$a + $i]) -or ($a -ne 0 -and ($base64 + "`"'.").Contains($text[$a - 1]))) {
             $a += $i
             continue
         }
@@ -124,7 +122,6 @@ function parse($file, $modules, $texts) {
         }
     }
     $mods = @()
-    $modules[$file] = @()
     foreach ($f in $order) {
         if (-not $texts.ContainsKey($f)) {
             $mods += $f
@@ -191,7 +188,7 @@ function parse($file, $modules, $texts) {
         $path = $f.Substring(0, $f.Length - 3)
         $path = $path -replace "[^$base64]", '_'
         foreach ($name in $files[$f]) {
-            $text = substitute $text $name ($name + '_' + $path)
+            $text = substitute ($name + '_' + $path) $name $text
         }
     }
     $lines = $text.Split("`n")
@@ -227,7 +224,9 @@ function build($file, $output) {
             $imports = $imports[1..$imports.Count]
         } else {
             parse $file $modules $texts
-            $imports = $modules[$file] + $imports
+            if ($modules.ContainsKey($file)) {
+                $imports = $modules[$file] + $imports
+            }
             if ($texts.ContainsKey($file)) {
                 $imported += $file
             }
