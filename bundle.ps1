@@ -1,4 +1,4 @@
-# ./bundle.ps1 a/a.js a/y.js
+# pwsh bundle.ps1 a/a.js a/y.js
 
 $base64 = '$0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
 
@@ -22,17 +22,17 @@ function resolve($f, $file) {
     return $f
 }
 
-function substitute($next, $past, $text) {
-    $a = 0
-    $i = $past.Length
+function substitute($match, $next, $text) {
+    $a = $text.IndexOf($match)
+    $i = $match.Length
     $j = $next.Length
-    while (($a = $text.IndexOf($past, $a)) -ne -1) {
+    while ($a -ne -1) {
         if ($base64.Contains($text[$a + $i]) -or ($a -ne 0 -and ($base64 + "`"'.").Contains($text[$a - 1]))) {
-            $a += $i
-            continue
+            $a = $text.IndexOf($match, $a + $i)
+        } else {
+            $text = $text.Substring(0, $a) + $next + $text.Substring($a + $i)
+            $a = $text.IndexOf($match, $a + $j)
         }
-        $text = $text.Substring(0, $a) + $next + $text.Substring($a + $i)
-        $a += $j
     }
     return $text
 }
@@ -72,7 +72,8 @@ function parse($file, $modules, $texts) {
             $text += $line + "`n"
         }
     }
-    $files = @{$file = @()}
+    $defaults = @{}
+    $exports = @{$file = @{}}
     $order = @()
     $texta = $text
     while (($i = $text.IndexOf('import ')) -ne -1) {
@@ -87,13 +88,15 @@ function parse($file, $modules, $texts) {
         while ($text[$i] -eq ' ') {
             $i += 1
         }
+        $defaulted = ''
+        $names = @{}
         $text = $text.Substring($i)
         $i = $text.IndexOf('from')
         $j = $text.IndexOf('"')
         $k = $text.IndexOf("'")
-        $names = @()
         if ($i -ne -1 -and ($i -lt $j -or $j -eq -1) -and ($i -lt $k -or $k -eq -1)) {
-            while ($i -lt $text.Length) {
+            $length = $text.Length
+            while ($i -lt $length) {
                 $j = $text[$i - 1]
                 $k = $text[$i + 4]
                 if (($j -eq ' ' -or $j -eq '}') -and ($k -eq ' ' -or $k -eq '"' -or $k -eq "'")) {
@@ -102,7 +105,27 @@ function parse($file, $modules, $texts) {
                 $i += 4
                 $i += $text.Substring($i).IndexOf('from')
             }
-            $names = $text.Substring(0, $i) -split "[ ,{}]" | Where-Object { $_ -ne '' }
+            $variables = $text.Substring(0, $i)
+            if (($j = $variables.IndexOf('{')) -ne -1) {
+                $split = $variables.Substring($j + 1, $variables.IndexOf('}') - $j - 1).Split(',')
+                $variables = $variables.Substring(0, $j)
+                foreach ($name in $split) {
+                    $name = $name.TrimStart("`t ").TrimEnd("`t ")
+                    if (($k = $name.indexOf(' as ')) -ne -1) {
+                        $names[$name.Substring(0, $k)] = $name.Substring($k + 4)
+                    } elseif ($name) {
+                        $names[$name] = $name
+                    }
+                }
+            }
+            if (($j = $variables.IndexOf(',')) -ne -1) {
+                $variables = $variables.Substring(0, $j)
+            }
+            $name = $variables.TrimStart("`t ").TrimEnd("`t ")
+            if ($name) {
+                $defaulted = $name
+                $names[$name] = $name
+            }
             $i += 5
             while ($text[$i] -eq ' ') {
                 $i += 1
@@ -115,80 +138,102 @@ function parse($file, $modules, $texts) {
             $text = $text.Substring($i + 1)
             $f = resolve $text.Substring(0, $text.IndexOf($f)) $file
             if ($f -notin $order) {
-                $files[$f] = @()
+                $exports[$f] = @{}
                 $order += $f
             }
-            $files[$f] += $names
+            if ($defaulted) {
+                $defaults[$f] = $defaulted
+            }
+            foreach ($name in $names.Keys) {
+                $exports[$f][$name] = $names[$name]
+            }
         }
     }
+    $dependencies = $false
     $mods = @()
     foreach ($f in $order) {
         if (-not $texts.ContainsKey($f)) {
             $mods += $f
             if (-not $modules.ContainsKey($f)) {
-                $modules[$file] = $mods
-                return
+                $dependencies = $true
             }
         }
+    }
+    if ($dependencies) {
+        $modules[$file] = $mods
+        return
     }
     $declares = @('async', 'class', 'const', 'default', 'function', 'let', 'var')
     $defines = @("`n", ' ', '(', ',', '.', '[')
     $text = $texta
     while (($i = $text.IndexOf('export ')) -ne -1) {
         $text = $text.Substring($i + 7)
+        if ($text.IndexOf('default ') -eq 0) {
+            continue
+        }
         foreach ($name in $declares) {
             $i = $text.IndexOf($name)
             if ($i -ne -1 -and $i -lt 3) {
                 $text = $text.Substring($i + $name.Length)
             }
         }
-        $names = ''
         if (($i = $text.IndexOf("`n")) -ne -1) {
-            $names = $text.Substring(0, $i)
-        }
-        $i = 0
-        while ($names[$i] -eq ' ') {
-            $i += 1
-        }
-        $split = @()
-        if ($names[$i] -eq '{') {
-            $names = $names.Substring($i + 1)
-            $split = $names.Substring(0, $names.IndexOf('}')).Split(',')
-        } else {
-            $i = $names.IndexOf('(')
-            $j = $names.IndexOf('=')
-            if ($j -eq -1 -or ($i -lt $j -and $i -ne -1)) {
-                $split += $names
+            $variables = $text.Substring(0, $i)
+            $i = 0
+            $length = $name.Length
+            while ($i -lt $length -and $variables[$i] -eq ' ') {
+                $i += 1
+            }
+            $split = @()
+            if ($i -lt $length -and $variables[$i] -eq '{') {
+                $variables = $variables.Substring($i + 1)
+                $split = $variables.Substring(0, $variables.IndexOf('}')).Split(',')
             } else {
-                while ($j -ne -1 -and $names[$j + 1] -ne '>') {
-                    $split += $names.Substring(0, $j)
-                    $names = $names.Substring($j)
-                    if (($j = $names.IndexOf(',')) -eq -1) {
-                        break
+                $i = $variables.IndexOf('(')
+                $j = $variables.IndexOf('=')
+                if ($j -eq -1 -or ($i -lt $j -and $i -ne -1)) {
+                    $split += $variables
+                } else {
+                    while ($j -ne -1 -and $variables[$j + 1] -ne '>') {
+                        $split += $variables.Substring(0, $j)
+                        $variables = $variables.Substring($j)
+                        if (($j = $variables.IndexOf(',')) -eq -1) {
+                            break
+                        }
+                        $variables = $variables.Substring($j)
+                        $j = $variables.IndexOf('=')
                     }
-                    $names = $names.Substring($j)
-                    $j = $names.IndexOf('=')
                 }
             }
-        }
-        foreach ($name in $split) {
-            while ($name[0] -in $defines) {
-                $name = $name.Substring(1)
-            }
-            foreach ($i in $defines) {
-                if (($j = $name.IndexOf($i)) -ne -1) {
-                    $name = $name.Substring(0, $j)
+            foreach ($name in $split) {
+                while ($name[0] -in $defines) {
+                    $name = $name.Substring(1)
                 }
+                foreach ($i in $defines) {
+                    if (($j = $name.IndexOf($i)) -ne -1) {
+                        $name = $name.Substring(0, $j)
+                    }
+                }
+                $exports[$file][$name] = $name
             }
-            $files[$file] += $name
         }
     }
+    $defaulted = ''
     $text = $texta
-    foreach ($f in $files.Keys) {
+    foreach ($f in $exports.Keys) {
         $path = $f.Substring(0, $f.Length - 3)
         $path = $path -replace "[^$base64]", '_'
-        foreach ($name in $files[$f]) {
-            $text = substitute ($name + '_' + $path) $name $text
+        if ($f -eq $file) {
+            $defaulted = $path
+        }
+        $exported = $exports[$f]
+        foreach ($named in $exported.Keys) {
+            $name = $exported[$named]
+            if ($defaults.ContainsKey($f) -and $defaults[$f] -eq $name) {
+                $text = substitute $name ('_' + $path) $text
+            } else {
+                $text = substitute $name ($named + '_' + $path) $text
+            }
         }
     }
     $lines = $text.Split("`n")
@@ -196,7 +241,7 @@ function parse($file, $modules, $texts) {
     foreach ($line in $lines) {
         $a = $line.TrimStart("`t ")
         if ($a.StartsWith('export default ')) {
-            $line = $a.Substring(15)
+            $line = '_' + $defaulted + ' = ' + $a.Substring(15)
         } elseif ($a.StartsWith('export ')) {
             $line = $a.Substring(7)
             $a = $line.TrimStart("`t ")
@@ -229,6 +274,7 @@ function build($file, $output) {
             }
             if ($texts.ContainsKey($file)) {
                 $imported += $file
+                $imports = $imports[1..$imports.Count]
             }
         }
     }
