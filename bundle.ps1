@@ -3,18 +3,22 @@
 $base64 = '$0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
 
 function resolve($f, $file) {
-    if ($f.StartsWith('./')) {
-        $f = $f.Substring(2)
+    while ($f.StartsWith('../')) {
+        $f = $f.Substring(3)
+        $file = $file.Substring(0, $file.LastIndexOf('/'))
     }
-    $i = $f[0]
-    if ($i -ne '.' -and $i -ne '/') {
-        $f = $file.Substring(0, $file.LastIndexOf('/')) + '/' + $f
-    } elseif ($f.StartsWith('../')) {
-        while ($f.StartsWith('../')) {
-            $f = $f.Substring(3)
-            $file = $file.Substring(0, $file.LastIndexOf('/'))
+    $f = $file.Substring(0, $file.LastIndexOf('/')) + '/' + $f
+    $treats = @('', '/', '', '', '/', '\', '')
+    $tricks = @('~', ':', './', '.\', '//', '\\', '../')
+    for (($i = 0), ($length = $treats.Count); $i -lt $length; $i++) {
+        $treat = $treats[$i]
+        $trick = $tricks[$i]
+        while ($f.IndexOf($trick) -ne -1) {
+            $f = $f.Replace($trick, $treat)
         }
-        $f = $file.Substring(0, $file.LastIndexOf('/')) + '/' + $f
+    }
+    while ($f[0] -eq '/') {
+        $f = $f.Substring(1)
     }
     if (-not $f.EndsWith('.js')) {
         $f += '.js'

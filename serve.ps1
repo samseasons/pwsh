@@ -1,4 +1,4 @@
-# ./serve.ps1 a 1234
+# pwsh serve.ps1 a 1234
 
 $types = @{
     'css' = 'text/css';
@@ -10,6 +10,13 @@ $types = @{
 function serve($folder, $port) {
     $folder = $folder ?? 'a'
     $port = $port ?? 1234
+    $index = '/x.html'
+    if ($folder.EndsWith('.html')) {
+        if (($i = $folder.LastIndexOf('/')) -ne -1) {
+            $index = $folder.Substring($i)
+            $folder = $folder.Substring(0, $i)
+        }
+    }
     $listener = New-Object System.Net.HttpListener
     $listener.Prefixes.Add('http://localhost:' + $port + '/')
     $listener.Start()
@@ -17,14 +24,19 @@ function serve($folder, $port) {
     try {
         while ($listener.IsListening) {
             $task = $listener.GetContextAsync()
-            while (!$task.AsyncWaitHandle.WaitOne(100)) {}
+            while (-not $task.AsyncWaitHandle.WaitOne(100)) {}
             $context = $task.GetAwaiter().GetResult()
-            $file = $context.Request.Url.LocalPath.Replace('%20', ' ')
-            if ($file[0] -ne '/' -or $file -eq '/') {
-                $file = '/x.html'
-                $type = 'text/html'
+            $file = $context.Request.Url.LocalPath
+            if ($file[0] -ne '/' -or $file.IndexOf('..') -ne -1) {
+                continue
+            }
+            $file = $file.Replace('%20', ' ')
+            $type = $file.Substring($file.LastIndexOf('.') + 1)
+            if ($types.ContainsKey($type)) {
+                $type = $types[$type]
             } else {
-                $type = $types[$file.Substring($file.LastIndexOf('.') + 1)]
+                $file = $index
+                $type = 'text/html'
             }
             $file = $folder + $file
             if (Test-Path -Path $file) {
