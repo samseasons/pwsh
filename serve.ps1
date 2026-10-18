@@ -27,25 +27,25 @@ function serve($folder, $port) {
             while (-not $task.AsyncWaitHandle.WaitOne(100)) {}
             $context = $task.GetAwaiter().GetResult()
             $file = $context.Request.Url.LocalPath
-            if ($file[0] -ne '/' -or $file.IndexOf('..') -ne -1) {
-                continue
-            }
-            $file = $file.Replace('%20', ' ')
-            $type = $file.Substring($file.LastIndexOf('.') + 1)
-            if ($types.ContainsKey($type)) {
-                $type = $types[$type]
-            } else {
-                $file = $index
-                $type = 'text/html'
-            }
-            $file = $folder + $file
-            if (Test-Path -Path $file) {
-                $content = [System.IO.File]::ReadAllBytes($file)
-                $response = $context.Response
-                $response.ContentType = $type
-                $output = $response.OutputStream
-                $output.Write($content, 0, $content.Length)
-                $output.Close()
+            if ($file[0] -eq '/' -and $file.IndexOf('..') -eq -1) {
+                Write-Host($file)
+                $file = $file.Replace('%20', ' ')
+                $type = $file.Substring($file.LastIndexOf('.') + 1)
+                if ($types.ContainsKey($type)) {
+                    $type = $types[$type]
+                } else {
+                    $file = $index
+                    $type = 'text/html'
+                }
+                $file = $folder + $file
+                if (Test-Path -Path $file) {
+                    $content = [System.IO.File]::ReadAllBytes($file)
+                    $response = $context.Response
+                    $response.ContentType = $type
+                    $output = $response.OutputStream
+                    $output.Write($content, 0, $content.Length)
+                    $output.Close()
+                }
             }
         }
     } finally {

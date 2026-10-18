@@ -17,28 +17,15 @@ function resolve($f, $file) {
             $f = $f.Replace($trick, $treat)
         }
     }
-    while ($f[0] -eq '/') {
+    $i = $f[0]
+    while ($i -eq '/' -or $i -eq '\') {
         $f = $f.Substring(1)
+        $i = $f[0]
     }
     if (-not $f.EndsWith('.js')) {
         $f += '.js'
     }
     return $f
-}
-
-function substitute($match, $next, $text) {
-    $a = $text.IndexOf($match)
-    $i = $match.Length
-    $j = $next.Length
-    while ($a -ne -1) {
-        if ($base64.Contains($text[$a + $i]) -or ($a -ne 0 -and ($base64 + "`"'.").Contains($text[$a - 1]))) {
-            $a = $text.IndexOf($match, $a + $i)
-        } else {
-            $text = $text.Substring(0, $a) + $next + $text.Substring($a + $i)
-            $a = $text.IndexOf($match, $a + $j)
-        }
-    }
-    return $text
 }
 
 function parse($file, $modules, $texts) {
@@ -233,10 +220,20 @@ function parse($file, $modules, $texts) {
         $exported = $exports[$f]
         foreach ($named in $exported.Keys) {
             $name = $exported[$named]
-            if ($defaults.ContainsKey($f) -and $defaults[$f] -eq $name) {
-                $text = substitute $name ('_' + $path) $text
-            } else {
-                $text = substitute $name ($named + '_' + $path) $text
+            $next = '_' + $path
+            if (-not $defaults.ContainsKey($f) -or $defaults[$f] -ne $name) {
+                $next = $named + $next
+            }
+            $i = $text.IndexOf($name)
+            $j = $name.Length
+            $k = $next.Length
+            while ($i -ne -1) {
+                if ($base64.Contains($text[$i + $j]) -or ($i -ne 0 -and ($base64 + "`"'.").Contains($text[$i - 1]))) {
+                    $i = $text.IndexOf($name, $i + $j)
+                } else {
+                    $text = $text.Substring(0, $i) + $next + $text.Substring($i + $j)
+                    $i = $text.IndexOf($name, $i + $k)
+                }
             }
         }
     }
@@ -286,7 +283,26 @@ function build($file, $output) {
     foreach ($file in $imported) {
         $text += $texts[$file]
     }
-    $text.TrimEnd("`n") > $output
+    if ($text.Length -ne 0) {
+        $text = $text.Substring(0, $text.Length - 1)
+    }
+    if ($output.EndsWith('.html')) {
+        $text = '<!doctype html><html><body><script>' + $text + '</script></body></html>'
+        if (Test-Path -Path $output) {
+            $t = (Get-Content $output -Raw) ?? ''
+            $i = $t.IndexOf('<script')
+            $j = $t.IndexOf('</script')
+            if ($i -eq -1 -or $j -eq -1) {
+                $i = $t.IndexOf('</body')
+                if ($i -ne -1) {
+                    $text = $t.Substring(0, $i) + $text.Substring(27, $text.Length - 41) + $t.Substring($i)
+                }
+            } else {
+                $text = $t.Substring(0, $i) + $text.Substring(27, $text.Length - 41) + $t.Substring($j + 9)
+            }
+        }
+    }
+    $text | Out-File $output -NoNewLine
 }
 
 build $args[0] $args[1]
