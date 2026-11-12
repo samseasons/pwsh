@@ -8,19 +8,19 @@ function resolve($f, $file) {
         $file = $file.Substring(0, $file.LastIndexOf('/'))
     }
     $f = $file.Substring(0, $file.LastIndexOf('/')) + '/' + $f
-    $treats = @('', '/', '', '', '/', '\', '')
-    $tricks = @('~', ':', './', '.\', '//', '\\', '../')
-    for (($i = 0), ($length = $treats.Count); $i -lt $length; $i++) {
-        $treat = $treats[$i]
-        $trick = $tricks[$i]
-        while ($f.IndexOf($trick) -ne -1) {
-            $f = $f.Replace($trick, $treat)
-        }
+    $i = 0
+    $treats = @('', '/', '', '', '', '/')
+    $tricks = @(':', '\', '~', '..', './', '//')
+    for ($length = $treats.Count - 1; $i -lt $length; $i++) {
+        $f = $f.Replace($tricks[$i], $treats[$i])
     }
-    $i = $f[0]
-    while ($i -eq '/' -or $i -eq '\') {
+    $treat = $treats[$i]
+    $trick = $tricks[$i]
+    while ($f.IndexOf($trick) -ne -1) {
+        $f = $f.Replace($trick, $treat)
+    }
+    if ($f[0] -eq '/') {
         $f = $f.Substring(1)
-        $i = $f[0]
     }
     if (-not $f.EndsWith('.js')) {
         $f += '.js'
